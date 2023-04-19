@@ -32,9 +32,9 @@ void ethernet_out(buf_t *buf, const uint8_t *mac, net_protocol_t protocol)
     buf_add_header(buf, sizeof(ether_hdr_t));
     ether_hdr_t *hdr = (ether_hdr_t *)buf->data;
     memmove(hdr->dst, mac, NET_MAC_LEN);
-    memmove(hdr->src, mac, NET_MAC_LEN);
+    memmove(hdr->src, net_if_mac, NET_MAC_LEN);
     // little endian to big endian
-    hdr->protocol16 = swap16(protocol);
+    hdr->protocol16 = swap16((uint16_t)protocol);
     driver_send(buf);
 }
 /**
