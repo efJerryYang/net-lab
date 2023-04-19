@@ -10,7 +10,13 @@
  */
 void ethernet_in(buf_t *buf)
 {
-    // TO-DO
+   if (buf->len < sizeof(ether_hdr_t))
+       return;
+    ether_hdr_t *hdr = (ether_hdr_t *)buf->data;
+    // big endian to little endian
+    hdr->protocol16 = swap16(hdr->protocol16);
+    buf_remove_header(buf, sizeof(ether_hdr_t));
+    net_in(buf, hdr->protocol16, hdr->src);
 }
 /**
  * @brief 处理一个要发送的数据包
@@ -21,7 +27,15 @@ void ethernet_in(buf_t *buf)
  */
 void ethernet_out(buf_t *buf, const uint8_t *mac, net_protocol_t protocol)
 {
-    // TO-DO
+    if (buf->len < ETHERNET_MIN_TRANSPORT_UNIT)
+       buf_add_padding(buf, ETHERNET_MIN_TRANSPORT_UNIT - buf->len);
+    buf_add_header(buf, sizeof(ether_hdr_t));
+    ether_hdr_t *hdr = (ether_hdr_t *)buf->data;
+    memmove(hdr->dst, mac, NET_MAC_LEN);
+    memmove(hdr->src, net_if_mac, NET_MAC_LEN);
+    // little endian to big endian
+    hdr->protocol16 = swap16((uint16_t)protocol);
+    driver_send(buf);
 }
 /**
  * @brief 初始化以太网协议
