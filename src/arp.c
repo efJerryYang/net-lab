@@ -101,7 +101,10 @@ void arp_in(buf_t *buf, uint8_t *src_mac)
 
     arp_pkt_t *pkt = (arp_pkt_t *)buf->data;
 
-    if (pkt->hw_type16 != constswap16(ARP_HW_ETHER) || pkt->pro_type16 != constswap16(NET_PROTOCOL_IP) || pkt->hw_len != NET_MAC_LEN || pkt->pro_len != NET_IP_LEN || (pkt->opcode16 != constswap16(ARP_REQUEST) && pkt->opcode16 != constswap16(ARP_REPLY)))
+    if (pkt->hw_type16 != constswap16(ARP_HW_ETHER) ||
+        pkt->pro_type16 != constswap16(NET_PROTOCOL_IP) ||
+        pkt->hw_len != NET_MAC_LEN ||
+        pkt->pro_len != NET_IP_LEN || (pkt->opcode16 != constswap16(ARP_REQUEST) && pkt->opcode16 != constswap16(ARP_REPLY)))
         return;
     map_set(&arp_table, pkt->sender_ip, pkt->sender_mac);
     buf_t *arp_buf_mac = (buf_t *)map_get(&arp_buf, pkt->sender_ip);
@@ -126,10 +129,10 @@ void arp_in(buf_t *buf, uint8_t *src_mac)
 void arp_out(buf_t *buf, uint8_t *ip)
 {
     // Determine whether the destination IP lies on the local network or on another network. If it is on another network, send the packet to the default gateway.
-    const uint8_t *arp_buf_mac = (uint8_t *)map_get(&arp_buf, ip);
-    if (arp_buf_mac)
+    const uint8_t *arp_mac = (uint8_t *)map_get(&arp_table, ip);
+    if (arp_mac)
     {
-        ethernet_out(buf, arp_buf_mac, NET_PROTOCOL_IP);
+        ethernet_out(buf, arp_mac, NET_PROTOCOL_IP);
     }
     else if (map_get(&arp_buf, ip))
     {
