@@ -77,13 +77,17 @@ uint8_t ip_prefix_match(uint8_t *ipa, uint8_t *ipb)
  */
 uint16_t checksum16(uint16_t *data, size_t len)
 {
-    const uint8_t *ptr = (uint8_t *)data;
+    // https://datatracker.ietf.org/doc/html/rfc1071
     uint32_t sum = 0;
-    for (int i = 0; i < len; i++)
-        sum += (i % 2 == 0) ? (ptr[i] << 8) : ptr[i];
+    while (len > 1)
+    {
+        sum += *data++;
+        len -= 2;
+    }
+    if (len > 0)
+        sum += (*data);
 
-    while ((sum >> 16) > 0)
+    while (sum >> 16)
         sum = (sum & 0xffff) + (sum >> 16);
-
     return (uint16_t)~sum;
 }
