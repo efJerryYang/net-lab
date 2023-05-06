@@ -13,35 +13,32 @@
 void ip_in(buf_t *buf, uint8_t *src_mac)
 {
     ip_hdr_t *ip_hdr = (ip_hdr_t *)buf->data;
-    if (buf->len < ip_hdr->hdr_len * IP_HDR_LEN_PER_BYTE)
-    {
+
+    if (buf->len < sizeof(ip_hdr_t))
         return;
-    }
+
     if (ip_hdr->version != IP_VERSION_4 || swap16(ip_hdr->total_len16) > buf->len)
-    {
         return;
-    }
+
     uint16_t checksum = ip_hdr->hdr_checksum16;
     ip_hdr->hdr_checksum16 = 0;
-    if (checksum16((uint16_t *)ip_hdr, ip_hdr->hdr_len * IP_HDR_LEN_PER_BYTE) != checksum)
-    {
+
+    if (checksum16((uint16_t *)ip_hdr, sizeof(ip_hdr_t)) != checksum)
         return;
-    }
+
     ip_hdr->hdr_checksum16 = checksum;
+
     if (memcmp(ip_hdr->dst_ip, net_if_ip, NET_IP_LEN) != 0)
-    {
         return;
-    }
+
     if (buf->len > swap16(ip_hdr->total_len16))
-    {
         buf_remove_padding(buf, buf->len - swap16(ip_hdr->total_len16));
-    }
-    // TODO: icmp_unreachable
+
     if (!(ip_hdr->protocol == NET_PROTOCOL_ICMP || ip_hdr->protocol == NET_PROTOCOL_TCP || ip_hdr->protocol == NET_PROTOCOL_UDP))
-    {
-        icmp_unreachable(buf, src_mac, ICMP_CODE_PROTOCOL_UNREACH);
-    }
-    buf_remove_header(buf, ip_hdr->hdr_len * IP_HDR_LEN_PER_BYTE);
+        icmp_unreachable(buf, ip_hdr->src_ip, ICMP_CODE_PROTOCOL_UNREACH);
+
+    buf_remove_header(buf, sizeof(ip_hdr_t));
+
     net_in(buf, ip_hdr->protocol, ip_hdr->src_ip);
 }
 
@@ -57,22 +54,21 @@ void ip_in(buf_t *buf, uint8_t *src_mac)
  */
 void ip_fragment_out(buf_t *buf, uint8_t *ip, net_protocol_t protocol, int id, uint16_t offset, int mf)
 {
+    buf_add_header(buf, sizeof(ip_hdr_t)); // Order of this line matters
     ip_hdr_t *ip_hdr = (ip_hdr_t *)buf->data;
-    buf_add_header(buf, ip_hdr->hdr_len * IP_HDR_LEN_PER_BYTE);
-    ip_hdr->hdr_len = IP_HDR_LEN_PER_BYTE;
+    ip_hdr->hdr_len = sizeof(ip_hdr_t) / IP_HDR_LEN_PER_BYTE;
     ip_hdr->version = IP_VERSION_4;
     ip_hdr->tos = 0;
     ip_hdr->total_len16 = swap16(buf->len);
     ip_hdr->id16 = swap16(id);
-    uint16_t flags_fragment = offset & 0x1fffffff;
-    if(mf == 1) flags_fragment |= IP_MORE_FRAGMENT;
+    uint16_t flags_fragment = (offset & 0x1fffffff) | (mf << 13);
     ip_hdr->flags_fragment16 = swap16(flags_fragment);
     ip_hdr->ttl = 64;
     ip_hdr->protocol = protocol;
     ip_hdr->hdr_checksum16 = 0;
     memcpy(ip_hdr->src_ip, net_if_ip, NET_IP_LEN);
     memcpy(ip_hdr->dst_ip, ip, NET_IP_LEN);
-    ip_hdr->hdr_checksum16 = swap16(checksum16((uint16_t *)ip_hdr, ip_hdr->hdr_len * IP_HDR_LEN_PER_BYTE));
+    ip_hdr->hdr_checksum16 = swap16(checksum16((uint16_t *)ip_hdr, sizeof(ip_hdr_t)));
     arp_out(buf, ip);
 }
 
@@ -83,27 +79,36 @@ void ip_fragment_out(buf_t *buf, uint8_t *ip, net_protocol_t protocol, int id, u
  * @param ip 目标ip地址
  * @param protocol 上层协议
  */
+int packet_id = 0;
+
 void ip_out(buf_t *buf, uint8_t *ip, net_protocol_t protocol)
 {
-    const size_t IP_MAX_PAYLOAD_LEN = 1500 - IP_HDR_LEN_PER_BYTE * 5;
-    if (buf->len > IP_MAX_PAYLOAD_LEN)
+    size_t max_fragment_len = 1500 - sizeof(ip_hdr_t);
+    if (max_fragment_len != 1480)
+        return;
+
+    int fragment_index = 0;
+    size_t remaining_data_len = buf->len;
+    size_t data_offset = 0;
+    int has_more_fragments = 1;
+
+    do
     {
-        buf_t ip_buf;
-        buf_init(&ip_buf, buf->len);
-        buf_copy(ip_buf.data, buf->data, buf->len);
-        int offset = 0;
-        while (ip_buf.len > IP_MAX_PAYLOAD_LEN)
-        {
-            ip_fragment_out(&ip_buf, ip, protocol, 0, offset, 1);
-            offset += IP_MAX_PAYLOAD_LEN;
-            buf_remove_header(&ip_buf, IP_MAX_PAYLOAD_LEN);
-        }
-        ip_fragment_out(&ip_buf, ip, protocol, 0, offset, 0);
-    }
-    else
-    {
-        ip_fragment_out(buf, ip, protocol, 0, 0, 0);
-    }
+        size_t current_fragment_len = (remaining_data_len > max_fragment_len) ? max_fragment_len : remaining_data_len;
+        has_more_fragments = (remaining_data_len > max_fragment_len);
+
+        buf_t fragment_buf;
+        buf_init(&fragment_buf, current_fragment_len);
+        memcpy(fragment_buf.data, buf->data + data_offset, current_fragment_len);
+
+        ip_fragment_out(&fragment_buf, ip, protocol, packet_id, fragment_index * (max_fragment_len >> 3), has_more_fragments);
+
+        remaining_data_len -= current_fragment_len;
+        data_offset += current_fragment_len;
+        fragment_index++;
+    } while (has_more_fragments);
+
+    packet_id++;
 }
 
 /**
