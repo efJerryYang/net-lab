@@ -108,7 +108,10 @@ void ip_out(buf_t *buf, uint8_t *ip, net_protocol_t protocol)
             fragment_index++;
         }
     }
-
+    else
+    {
+        ip_fragment_out(buf, ip, protocol, packet_id, 0, 0);
+    }
     packet_id++;
 }
 
