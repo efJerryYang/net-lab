@@ -17,7 +17,7 @@ void ip_in(buf_t *buf, uint8_t *src_mac)
     {
         return;
     }
-    if (ip_hdr->version != IP_VERSION_4 || ip_hdr->total_len16 > buf->len)
+    if (ip_hdr->version != IP_VERSION_4 || swap16(ip_hdr->total_len16) > buf->len)
     {
         return;
     }
@@ -32,12 +32,17 @@ void ip_in(buf_t *buf, uint8_t *src_mac)
     {
         return;
     }
-    if (buf->len > ip_hdr->total_len16)
+    if (buf->len > swap16(ip_hdr->total_len16))
     {
-        buf_remove_padding(buf, ip_hdr->total_len16);
+        buf_remove_padding(buf, buf->len - swap16(ip_hdr->total_len16));
+    }
+    // TODO: icmp_unreachable
+    if (!(ip_hdr->protocol == NET_PROTOCOL_ICMP || ip_hdr->protocol == NET_PROTOCOL_TCP || ip_hdr->protocol == NET_PROTOCOL_UDP))
+    {
+        icmp_unreachable(buf, src_mac, ICMP_CODE_PROTOCOL_UNREACH);
     }
     buf_remove_header(buf, ip_hdr->hdr_len * IP_HDR_LEN_PER_BYTE);
-    net_in(buf, ip_hdr->protocol, src_mac);
+    net_in(buf, ip_hdr->protocol, ip_hdr->src_ip);
 }
 
 /**
@@ -57,15 +62,17 @@ void ip_fragment_out(buf_t *buf, uint8_t *ip, net_protocol_t protocol, int id, u
     ip_hdr->hdr_len = IP_HDR_LEN_PER_BYTE;
     ip_hdr->version = IP_VERSION_4;
     ip_hdr->tos = 0;
-    ip_hdr->total_len16 = buf->len;
-    ip_hdr->id16 = id;
-    ip_hdr->flags_fragment16 = (offset >> 3) | (mf << 13);
+    ip_hdr->total_len16 = swap16(buf->len);
+    ip_hdr->id16 = swap16(id);
+    uint16_t flags_fragment = offset & 0x1fffffff;
+    if(mf == 1) flags_fragment |= IP_MORE_FRAGMENT;
+    ip_hdr->flags_fragment16 = swap16(flags_fragment);
     ip_hdr->ttl = 64;
     ip_hdr->protocol = protocol;
     ip_hdr->hdr_checksum16 = 0;
     memcpy(ip_hdr->src_ip, net_if_ip, NET_IP_LEN);
     memcpy(ip_hdr->dst_ip, ip, NET_IP_LEN);
-    ip_hdr->hdr_checksum16 = checksum16((uint16_t *)ip_hdr, ip_hdr->hdr_len * IP_HDR_LEN_PER_BYTE);
+    ip_hdr->hdr_checksum16 = swap16(checksum16((uint16_t *)ip_hdr, ip_hdr->hdr_len * IP_HDR_LEN_PER_BYTE));
     arp_out(buf, ip);
 }
 
