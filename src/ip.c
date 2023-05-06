@@ -23,7 +23,7 @@ void ip_in(buf_t *buf, uint8_t *src_mac)
     uint16_t checksum = ip_hdr->hdr_checksum16;
     ip_hdr->hdr_checksum16 = 0;
 
-    if (swap16(checksum16((uint16_t *)ip_hdr, sizeof(ip_hdr_t))) != checksum)
+    if (checksum16((uint16_t *)ip_hdr, sizeof(ip_hdr_t)) != checksum)
         return;
 
     ip_hdr->hdr_checksum16 = checksum;
