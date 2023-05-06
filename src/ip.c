@@ -84,29 +84,30 @@ int packet_id = 0;
 void ip_out(buf_t *buf, uint8_t *ip, net_protocol_t protocol)
 {
     size_t max_fragment_len = 1500 - sizeof(ip_hdr_t);
-    if (max_fragment_len != 1480)
-        return;
+    size_t total_data_len = buf->len;
 
-    int fragment_index = 0;
-    size_t remaining_data_len = buf->len;
-    size_t data_offset = 0;
-    int has_more_fragments = 1;
-
-    do
+    if (total_data_len > max_fragment_len)
     {
-        size_t current_fragment_len = (remaining_data_len > max_fragment_len) ? max_fragment_len : remaining_data_len;
-        has_more_fragments = (remaining_data_len > max_fragment_len);
+        size_t data_offset = 0;
+        int fragment_index = 0;
+        int has_more_fragments = 1;
 
-        buf_t fragment_buf;
-        buf_init(&fragment_buf, current_fragment_len);
-        memcpy(fragment_buf.data, buf->data + data_offset, current_fragment_len);
+        while (total_data_len > 0)
+        {
+            size_t current_fragment_len = (total_data_len > max_fragment_len) ? max_fragment_len : total_data_len;
+            has_more_fragments = (total_data_len > max_fragment_len);
 
-        ip_fragment_out(&fragment_buf, ip, protocol, packet_id, fragment_index * (max_fragment_len >> 3), has_more_fragments);
+            buf_t fragment_buf;
+            buf_init(&fragment_buf, current_fragment_len);
+            memcpy(fragment_buf.data, buf->data + data_offset, current_fragment_len);
 
-        remaining_data_len -= current_fragment_len;
-        data_offset += current_fragment_len;
-        fragment_index++;
-    } while (has_more_fragments);
+            ip_fragment_out(&fragment_buf, ip, protocol, packet_id, fragment_index * (max_fragment_len >> 3), has_more_fragments);
+
+            data_offset += current_fragment_len;
+            total_data_len -= current_fragment_len;
+            fragment_index++;
+        }
+    }
 
     packet_id++;
 }
