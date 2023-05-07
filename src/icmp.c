@@ -16,11 +16,15 @@ static void icmp_resp(buf_t *req_buf, uint8_t *src_ip)
     memcpy(txbuf.data, req_buf->data, req_buf->len);
 
     icmp_hdr_t *icmp_hdr = (icmp_hdr_t *)txbuf.data;
+    icmp_hdr_t *req_hdr = (icmp_hdr_t *)req_buf->data;
 
     icmp_hdr->type = ICMP_TYPE_ECHO_REPLY;
+    icmp_hdr->code = 0;
+    icmp_hdr->id16 = req_hdr->id16;
+    icmp_hdr->seq16 = req_hdr->seq16;
 
     icmp_hdr->checksum16 = 0;
-    icmp_hdr->checksum16 = checksum16(txbuf.data, txbuf.len);
+    icmp_hdr->checksum16 = checksum16((uint16_t *)txbuf.data, txbuf.len);
 
     ip_out(&txbuf, src_ip, NET_PROTOCOL_ICMP);
 }
@@ -59,11 +63,13 @@ void icmp_unreachable(buf_t *recv_buf, uint8_t *src_ip, icmp_code_t code)
 
     icmp_hdr->type = ICMP_TYPE_UNREACH;
     icmp_hdr->code = code;
+    icmp_hdr->id16 = 0;
+    icmp_hdr->seq16 = 0;
 
     memcpy(txbuf.data + sizeof(icmp_hdr_t), recv_buf->data, sizeof(ip_hdr_t) + 8);
 
     icmp_hdr->checksum16 = 0;
-    icmp_hdr->checksum16 = checksum16(txbuf.data, txbuf.len);
+    icmp_hdr->checksum16 = checksum16((uint16_t *)txbuf.data, txbuf.len);
 
     ip_out(&txbuf, src_ip, NET_PROTOCOL_ICMP);
 }
