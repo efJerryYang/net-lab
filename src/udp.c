@@ -18,23 +18,30 @@ map_t udp_table;
  */
 static uint16_t udp_checksum(buf_t *buf, uint8_t *src_ip, uint8_t *dst_ip)
 {
-    buf_add_header(buf, 12);
+    udp_hdr_t *udp_hdr = (udp_hdr_t *)buf->data;
+    uint16_t len = buf->len;
+
+    buf_add_header(buf, sizeof(udp_peso_hdr_t));
 
     uint8_t ip_header_backup[20];
-    memcpy(ip_header_backup, buf->data + 12, 20);
+    memcpy(ip_header_backup, buf->data, sizeof(udp_peso_hdr_t));
 
-    memcpy(buf->data, src_ip, 4);
-    memcpy(buf->data + 4, dst_ip, 4);
-    buf->data[8] = 0;
-    buf->data[9] = ip_header_backup[9];
-    *((uint16_t *)(buf->data + 10)) = *((uint16_t *)(ip_header_backup + 4));
+    udp_peso_hdr_t *peso_hdr = (udp_peso_hdr_t *)buf->data;
+    memcpy(peso_hdr->src_ip, src_ip, NET_IP_LEN);
+    memcpy(peso_hdr->dst_ip, dst_ip, NET_IP_LEN);
+    peso_hdr->placeholder = 0;
+    peso_hdr->protocol = NET_PROTOCOL_UDP;
+    peso_hdr->total_len16 = swap16(len);
 
-    uint16_t result = checksum16((uint16_t *)buf->data, buf->len);
+    udp_hdr->checksum16 = 0;
+    uint16_t checksum = checksum16((uint16_t *)buf->data, buf->len);
+    udp_hdr->checksum16 = checksum;
+    
+    memcpy(buf->data, ip_header_backup, sizeof(udp_peso_hdr_t));
 
-    memcpy(buf->data + 12, ip_header_backup, 20);
-    buf_remove_header(buf, 12);
+    buf_remove_header(buf, sizeof(udp_peso_hdr_t));
 
-    return result;
+    return checksum;
 }
 
 /**
@@ -45,31 +52,32 @@ static uint16_t udp_checksum(buf_t *buf, uint8_t *src_ip, uint8_t *dst_ip)
  */
 void udp_in(buf_t *buf, uint8_t *src_ip)
 {
-    if (buf->len < 8 || buf->len < *((uint16_t *)(buf->data + 4)))
+    udp_hdr_t *udp_hdr = (udp_hdr_t *)buf->data;
+
+    if (buf->len < sizeof(udp_hdr_t))
         return;
 
-    uint16_t received_checksum = *((uint16_t *)(buf->data + 6));
-    *((uint16_t *)(buf->data + 6)) = 0;
-
-    uint8_t *dst_ip = buf->data + 16;
-    uint16_t calculated_checksum = udp_checksum(buf, src_ip, dst_ip);
+    uint16_t received_checksum = udp_hdr->checksum16;
+    udp_hdr->checksum16 = 0;
+    uint16_t calculated_checksum = udp_checksum(buf, src_ip, net_if_ip);
 
     if (received_checksum != calculated_checksum)
         return;
 
-    uint16_t dst_port = *((uint16_t *)(buf->data + 2));
+    udp_hdr->checksum16 = received_checksum;
 
-    void (*handler)(buf_t *) = map_get(&udp_table, &dst_port);
+    uint16_t dst_port = swap16(udp_hdr->dst_port16);
+    udp_handler_t *handler = map_get(&udp_table, &dst_port);
 
     if (!handler)
     {
-        buf_add_header(buf, 20);
+        buf_add_header(buf, sizeof(ip_hdr_t));
         icmp_unreachable(buf, src_ip, ICMP_CODE_PORT_UNREACH);
         return;
     }
 
-    buf_remove_header(buf, 8);
-    handler(buf);
+    buf_remove_header(buf, sizeof(udp_hdr_t));
+    (*handler)(buf->data, buf->len, src_ip, swap16(udp_hdr->src_port16));
 }
 
 /**
@@ -82,18 +90,16 @@ void udp_in(buf_t *buf, uint8_t *src_ip)
  */
 void udp_out(buf_t *buf, uint16_t src_port, uint8_t *dst_ip, uint16_t dst_port)
 {
-    buf_add_header(buf, 8);
+    buf_add_header(buf, sizeof(udp_hdr_t));
 
-    *((uint16_t *)(buf->data)) = src_port;
-    *((uint16_t *)(buf->data + 2)) = dst_port;
-    *((uint16_t *)(buf->data + 4)) = buf->len;
-    *((uint16_t *)(buf->data + 6)) = 0;
+    udp_hdr_t *udp_hdr = (udp_hdr_t *)buf->data;
+    udp_hdr->src_port16 = swap16(src_port);
+    udp_hdr->dst_port16 = swap16(dst_port);
+    udp_hdr->total_len16 = swap16(buf->len);
+    udp_hdr->checksum16 = 0;
 
-    uint8_t src_ip[4];
-    memcpy(src_ip, net_if_ip, 4);
-
-    uint16_t checksum = udp_checksum(buf, src_ip, dst_ip);
-    *((uint16_t *)(buf->data + 6)) = checksum;
+    uint16_t checksum = udp_checksum(buf, net_if_ip, dst_ip);
+    udp_hdr->checksum16 = checksum;
 
     ip_out(buf, dst_ip, NET_PROTOCOL_UDP);
 }
