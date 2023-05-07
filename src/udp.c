@@ -36,7 +36,7 @@ static uint16_t udp_checksum(buf_t *buf, uint8_t *src_ip, uint8_t *dst_ip)
     udp_hdr->checksum16 = 0;
     uint16_t checksum = checksum16((uint16_t *)buf->data, buf->len);
     udp_hdr->checksum16 = checksum;
-    
+
     memcpy(buf->data, ip_header_backup, sizeof(udp_peso_hdr_t));
 
     buf_remove_header(buf, sizeof(udp_peso_hdr_t));
