@@ -85,7 +85,7 @@ uint16_t checksum16(uint16_t *data, size_t len)
         len -= 2;
     }
     if (len > 0)
-        sum += (*data);
+        sum += *data;
 
     while (sum >> 16)
         sum = (sum & 0xffff) + (sum >> 16);

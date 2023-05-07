@@ -5,13 +5,13 @@
 #include "ip.h"
 /**
  * @brief 处理一个收到的数据包
- * 
+ *
  * @param buf 要处理的数据包
  */
 void ethernet_in(buf_t *buf)
 {
-   if (buf->len < sizeof(ether_hdr_t))
-       return;
+    if (buf->len < sizeof(ether_hdr_t))
+        return;
     ether_hdr_t *hdr = (ether_hdr_t *)buf->data;
     // big endian to little endian
     hdr->protocol16 = swap16(hdr->protocol16);
@@ -20,7 +20,7 @@ void ethernet_in(buf_t *buf)
 }
 /**
  * @brief 处理一个要发送的数据包
- * 
+ *
  * @param buf 要处理的数据包
  * @param mac 目标MAC地址
  * @param protocol 上层协议
@@ -28,7 +28,7 @@ void ethernet_in(buf_t *buf)
 void ethernet_out(buf_t *buf, const uint8_t *mac, net_protocol_t protocol)
 {
     if (buf->len < ETHERNET_MIN_TRANSPORT_UNIT)
-       buf_add_padding(buf, ETHERNET_MIN_TRANSPORT_UNIT - buf->len);
+        buf_add_padding(buf, ETHERNET_MIN_TRANSPORT_UNIT - buf->len);
     buf_add_header(buf, sizeof(ether_hdr_t));
     ether_hdr_t *hdr = (ether_hdr_t *)buf->data;
     memmove(hdr->dst, mac, NET_MAC_LEN);
@@ -39,7 +39,7 @@ void ethernet_out(buf_t *buf, const uint8_t *mac, net_protocol_t protocol)
 }
 /**
  * @brief 初始化以太网协议
- * 
+ *
  */
 void ethernet_init()
 {
@@ -48,7 +48,7 @@ void ethernet_init()
 
 /**
  * @brief 一次以太网轮询
- * 
+ *
  */
 void ethernet_poll()
 {
