@@ -94,8 +94,32 @@ static void send_file(tcp_connect_t* tcp, const char* url) {
     注意，本实验的WEB服务器网页存放在XHTTP_DOC_DIR目录中
     */
 
-   // TODO
-
+    sprintf(file_path, "%s%s", XHTTP_DOC_DIR, url);
+    FILE *fp = fopen(file_path, "rb");
+    if (fp == NULL)
+    {
+        sprintf(tx_buffer, "HTTP/1.0 404 Not Found\n\n"
+                           "<html><head>"
+                           "<title>404 Not Found</title>"
+                           "</head><body>"
+                           "<h1>Not Found</h1>"
+                           "<p>The requested URL %s was not found on this server.</p>"
+                           "</body></html>",
+                url);
+        tcp_connect_write(tcp, (uint8_t *)tx_buffer, strlen(tx_buffer));
+    }
+    else
+    {
+        tcp_connect_write(tcp, (const uint8_t *)"HTTP/1.0 200 OK\n\n", 17);
+        size_t tmp;
+        while ((tmp = fread(tx_buffer, 1, 1024, fp)) > 0)
+        {
+            net_poll();
+            tcp_connect_write(tcp, (uint8_t *)tx_buffer, tmp);
+        }
+        fclose(fp);
+    }
+    net_poll();
 }
 
 static void http_handler(tcp_connect_t* tcp, connect_state_t state) {
@@ -137,29 +161,39 @@ void http_server_run(void) {
         1、调用get_line从rx_buffer中获取一行数据，如果没有数据，则调用close_http关闭tcp，并继续循环
         */
 
-       // TODO
-
+        size_t len = get_line(tcp, rx_buffer, 1023);
+        if (len == 0)
+        {
+            close_http(tcp);
+            continue;
+        }
 
         /*
         2、检查是否有GET请求，如果没有，则调用close_http关闭tcp，并继续循环
         */
 
-       // TODO
-
+        if (memcmp(rx_buffer, "GET", 3) != 0)
+        {
+            close_http(tcp);
+            continue;
+        }
 
         /*
         3、解析GET请求的路径，注意跳过空格，找到GET请求的文件，调用send_file发送文件
         */
 
-       // TODO
-
+        int i, j;
+        for (i = 3; rx_buffer[i] == 0x20; i++);
+        for (j = 0; rx_buffer[i] != 0x20; i++, j++)
+            url_path[j] = rx_buffer[i];
+        url_path[j] = 0;
+        send_file(tcp, url_path);
 
         /*
         4、调用close_http关掉连接
         */
 
-       // TODO
-
+        close_http(tcp);
 
         printf("!! final close\n");
     }
